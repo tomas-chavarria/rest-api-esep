@@ -1,0 +1,335 @@
+openapi: 3.0.3
+info:
+  title: Movie Ticket Showtimes and Booking API
+  version: 1.0.0
+  description: >
+    API specification for searching movie showtimes, creating ticket bookings, 
+    and managing or canceling reservations in a movie theater system.
+servers:
+  - url: https://api.example-cinema.com/v1
+    description: Example production server URL
+paths:
+  /showtimes:
+    get:
+      operationId: searchShowtimes
+      summary: Find available movie showtimes
+      description: >
+        Returns scheduled showtimes matching the supplied filters. The client may use
+        a returned showtimeId to request seat availability and create bookings.
+      parameters:
+        - name: movieId
+          in: query
+          required: false
+          description: Unique identifier for a movie.
+          schema:
+            type: string
+            example: mov_12345
+        - name: date
+          in: query
+          required: true
+          description: Local theater date for the requested showtimes.
+          schema:
+            type: string
+            format: date
+            example: "2026-11-05"
+        - name: locationId
+          in: query
+          required: false
+          description: Identifier for a theater or theater location.
+          schema:
+            type: string
+            example: th_90210
+        - name: postalCode
+          in: query
+          required: false
+          description: Postal code used to find nearby theater locations.
+          schema:
+            type: string
+            example: "32601"
+        - name: page
+          in: query
+          required: false
+          description: One-based page number for paginated results.
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          description: Maximum number of showtimes to return per page.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Matching showtimes were returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShowtimeSearchResponse"
+        "400":
+          description: One or more query parameters are invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: The requested movie or theater location does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Too many requests.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Unexpected server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /bookings:
+    post:
+      operationId: createBooking
+      summary: Create a new ticket booking and reserve seats
+      description: >
+        Submits selected seats and customer details for a specific showtime, 
+        initiating a temporary hold and generating a pending booking.
+      requestBody:
+        required: true
+        description: Booking details containing showtime, selected seats, and customer information.
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookingRequest"
+      responses:
+        "201":
+          description: Booking successfully created and seats temporarily reserved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookingResponse"
+        "400":
+          description: Invalid request payload or missing required fields.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: One or more selected seats are already taken or unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /bookings/{bookingId}:
+    delete:
+      operationId: cancelBooking
+      summary: Cancel an existing booking and release reserved seats
+      description: >
+        Cancels a pending or confirmed booking using its unique identifier, 
+        releasing the associated seats back into the theater inventory.
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          description: Unique identifier of the booking to cancel.
+          schema:
+            type: string
+            example: bkg_98765
+      responses:
+        "204":
+          description: Booking successfully canceled and seats released. No content returned.
+        "400":
+          description: Invalid booking ID format.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: The specified booking ID was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The booking cannot be canceled (e.g., screening has already started or already canceled).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  schemas:
+    ShowtimeSearchResponse:
+      type: object
+      required:
+        - date
+        - page
+        - pageSize
+        - totalResults
+        - showtimes
+      properties:
+        date:
+          type: string
+          format: date
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        totalResults:
+          type: integer
+        showtimes:
+          type: array
+          items:
+            $ref: "#/components/schemas/Showtime"
+
+    Showtime:
+      type: object
+      required:
+        - showtimeId
+        - movie
+        - theater
+        - startsAt
+        - format
+        - availableSeatCount
+        - currency
+        - ticketPriceFrom
+      properties:
+        showtimeId:
+          type: string
+        movie:
+          $ref: "#/components/schemas/MovieSummary"
+        theater:
+          $ref: "#/components/schemas/TheaterSummary"
+        startsAt:
+          type: string
+          format: date-time
+        format:
+          type: string
+        availableSeatCount:
+          type: integer
+        currency:
+          type: string
+        ticketPriceFrom:
+          type: number
+          format: float
+
+    MovieSummary:
+      type: object
+      required:
+        - movieId
+        - title
+        - runtimeMinutes
+      properties:
+        movieId:
+          type: string
+        title:
+          type: string
+        rating:
+          type: string
+        runtimeMinutes:
+          type: integer
+
+    TheaterSummary:
+      type: object
+      required:
+        - locationId
+        - name
+        - city
+        - region
+      properties:
+        locationId:
+          type: string
+        name:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        region:
+          type: string
+        postalCode:
+          type: string
+
+    BookingRequest:
+      type: object
+      required:
+        - showtimeId
+        - selectedSeats
+        - customer
+      properties:
+        showtimeId:
+          type: string
+          example: st_10001
+        selectedSeats:
+          type: array
+          items:
+            type: string
+          example: ["E12", "E13"]
+        customer:
+          type: object
+          required:
+            - name
+            - email
+          properties:
+            name:
+              type: string
+              example: Jane Doe
+            email:
+              type: string
+              format: email
+              example: jane.doe@example.com
+            phone:
+              type: string
+              example: "+1-555-0199"
+
+    BookingResponse:
+      type: object
+      required:
+        - bookingId
+        - showtimeId
+        - status
+        - totalAmount
+        - expiresAt
+      properties:
+        bookingId:
+          type: string
+          example: bkg_98765
+        showtimeId:
+          type: string
+          example: st_10001
+        status:
+          type: string
+          example: PENDING_PAYMENT
+        totalAmount:
+          type: number
+          format: float
+          example: 25.00
+        expiresAt:
+          type: string
+          format: date-time
+          example: "2026-11-05T18:15:00-04:00"
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          example: RESOURCE_NOT_FOUND
+        message:
+          type: string
+          example: The requested booking ID does not exist.
+        requestId:
+          type: string
+          example: req_abc123
